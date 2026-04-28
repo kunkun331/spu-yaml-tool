@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>SPU YAML 生成器</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; color: #222; }
+  h2 { margin-bottom: 2px; }
+  .sub { color: #888; font-size: 13px; margin: 0 0 20px; }
+  label { display: block; font-weight: 600; margin: 16px 0 5px; font-size: 14px; }
+  textarea {
+    width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 13px; font-family: monospace; background: #fff; height: 180px; resize: vertical;
+  }
+  .btn { padding: 9px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  #genBtn { background: #4a90e2; color: #fff; margin-top: 12px; }
+  #copyBtn { background: #eee; color: #333; margin-top: 12px; margin-left: 8px; display: none; }
+  #status { margin-top: 16px; font-size: 13px; }
+  .card {
+    background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+    border-left: 4px solid #4a90e2; display: flex; align-items: flex-start; gap: 12px;
+  }
+  .card.ok { border-color: #27ae60; }
+  .card.warn { border-color: #e67e22; }
+  .card.err { border-color: #e74c3c; }
+  .card-info { flex: 1; font-size: 13px; line-height: 1.7; }
+  .card-info strong { font-size: 14px; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600; display: inline-block; }
+  .badge.ok { background: #d4edda; color: #155724; }
+  .badge.warn { background: #fff3cd; color: #856404; }
+  .badge.err { background: #f8d7da; color: #721c24; }
+  .spu-input { border: 1px solid #ddd; border-radius: 4px; padding: 3px 7px; font-size: 13px; width: 200px; }
+  #output {
+    margin-top: 16px; background: #1e1e1e; color: #d4d4d4; padding: 16px;
+    border-radius: 8px; font-family: monospace; font-size: 13px; white-space: pre;
+    display: none; line-height: 1.8;
+  }
+  #dbStatus { font-size: 12px; color: #888; margin-bottom: 16px; }
+  .match-row { font-size: 12px; color: #555; margin-top: 3px; }
+  .match-row span { background: #eef; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+<h2>🎭 SPU YAML 生成器</h2>
+<p class="sub">批量将机器人播报转为后台 YAML 配置 · 自动匹配 spu_id</p>
+<div id="dbStatus">⏳ 正在加载剧目数据库...</div>
+
+<label>粘贴播报内容（可粘贴多条，用空行分隔）</label>
+<textarea id="input" placeholder="spu无法匹配通知🈚🈚🈚
+剧名📕：红莲
+城市🌇：成都
+剧场🕍：成都城市音乐厅歌剧厅
+演出时间⏰：2026-07-10 19:30
+
+spu无法匹配通知🈚🈚🈚
+剧名📕：另一部剧
+城市🌇：上海
+剧场🕍：某某剧场
+演出时间⏰：2026-07-11 20:00"></textarea>
+
+<button class="btn" id="genBtn" onclick="generate()">解析并匹配</button>
+<button class="btn" id="copyBtn" onclick="copyYaml()">复制 YAML</button>
+
+<div id="status"></div>
+<div id="output"></div>
+
+<script>
+let showsDb = [];
+let showsMap = {};
+
+async function loadDb() {
+  try {
+    const resp = await fetch('shows.json');
+    showsDb = await resp.json();
+    showsDb.forEach(s => { showsMap[normalize(s.name)] = s.id; });
+    document.getElementById('dbStatus').textContent = `✅ 数据库已加载 ${showsDb.length} 部剧目`;
+  } catch(e) {
+    document.getElementById('dbStatus').textContent = '❌ 数据库加载失败';
+  }
+}
+
+function normalize(s) {
+  return s.replace(/\s/g, '').toLowerCase();
+}
+
+function findSpu(musical) {
+  const key = normalize(musical);
+  if (showsMap[key]) return { id: showsMap[key], type: 'exact' };
+  let best = null;
+  for (const s of showsDb) {
+    const dbKey = normalize(s.name);
+    if (dbKey.includes(key) || key.includes(dbKey)) {
+      if (!best || s.name.length > best.name.length) best = s;
+    }
+  }
+  if (best) return { id: best.id, name: best.name, type: 'fuzzy' };
+  return null;
+}
+
+function parseLine(line) {
+  const m = line.match(/^.+?[：:](.+)$/);
+  return m ? m[1].trim() : null;
+}
+
+function parseBlocks(raw) {
+  const lines = raw.split('\n');
+  const blocks = [];
+  let cur = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) {
+      if (cur.length) { blocks.push(cur); cur = []; }
+    } else if (t.includes('spu无法匹配') && cur.length) {
+      blocks.push(cur); cur = [t];
+    } else {
+      cur.push(t);
+    }
+  }
+  if (cur.length) blocks.push(cur);
+  return blocks;
+}
+
+function parseBlock(lines) {
+  let musical = null, city = null, theatre = null;
+  for (const line of lines) {
+    if (!musical && (line.includes('剧名') || line.includes('📕'))) musical = parseLine(line);
+    else if (!city && (line.includes('城市') || line.includes('🌇'))) city = parseLine(line);
+    else if (!theatre && (line.includes('剧场') || line.includes('🕍'))) theatre = parseLine(line);
+  }
+  return { musical, city, theatre };
+}
+
+let parsedItems = [];
+
+function generate() {
+  const raw = document.getElementById('input').value.trim();
+  if (!raw) return;
+  const blocks = parseBlocks(raw);
+  parsedItems = blocks.map(b => {
+    const { musical, city, theatre } = parseBlock(b);
+    const match = musical ? findSpu(musical) : null;
+    return { musical, city, theatre, match, manualSpu: '' };
+  }).filter(it => it.musical || it.city || it.theatre);
+  renderCards();
+}
+
+function renderCards() {
+  const status = document.getElementById('status');
+  status.innerHTML = '';
+  parsedItems.forEach((item, i) => {
+    const { musical, city, theatre, match } = item;
+    const valid = musical && city && theatre;
+    let cardClass = 'card', badge = '', matchRow = '', spuDisplay = '';
+    if (!valid) {
+      cardClass += ' err';
+      badge = '<span class="badge err">解析失败</span>';
+    } else if (match && match.type === 'exact') {
+      cardClass += ' ok';
+      badge = '<span class="badge ok">精确匹配</span>';
+      spuDisplay = `<span style="color:#27ae60;font-family:monospace">${match.id}</span>`;
+    } else if (match && match.type === 'fuzzy') {
+      cardClass += ' warn';
+      badge = '<span class="badge warn">模糊匹配</span>';
+      spuDisplay = `<span style="color:#e67e22;font-family:monospace">${match.id}</span>`;
+      matchRow = `<div class="match-row">匹配到：<span>${match.name}</span>，请确认是否正确</div>`;
+    } else {
+      cardClass += ' err';
+      badge = '<span class="badge err">未匹配</span>';
+      spuDisplay = `<input class="spu-input" placeholder="手动填入 spu_id" oninput="parsedItems[${i}].manualSpu=this.value; refreshOutput()">`;
+    }
+    status.innerHTML += `
+      <div class="${cardClass}">
+        <div class="card-info">
+          <strong>${musical || '（未识别）'}</strong> ${badge}<br>
+          城市：${city || '-'} ｜ 剧场：${theatre || '-'}<br>
+          SPU ID：${spuDisplay}
+          ${matchRow}
+        </div>
+      </div>`;
+  });
+  refreshOutput();
+}
+
+function refreshOutput() {
+  const out = document.getElementById('output');
+  const copyBtn = document.getElementById('copyBtn');
+  const lines = [];
+  for (const item of parsedItems) {
+    const { musical, city, theatre, match, manualSpu } = item;
+    if (!musical || !city || !theatre) continue;
+    const spuId = (match ? match.id : null) || manualSpu || 'FILL_IN_SPU_ID';
+    lines.push(`- city: "${city}"\n  musical: "${musical}"\n  theatre: "${theatre}"\n  spu_id: ${spuId}`);
+  }
+  if (!lines.length) { out.style.display = 'none'; copyBtn.style.display = 'none'; return; }
+  const raw = lines.join('\n\n');
+  out._raw = raw;
+  out.textContent = raw;
+  out.style.display = 'block';
+  copyBtn.style.display = 'inline-block';
+}
+
+function copyYaml() {
+  navigator.clipboard.writeText(document.getElementById('output')._raw).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✓ 已复制';
+    setTimeout(() => btn.textContent = '复制 YAML', 1500);
+  });
+}
+
+loadDb();
+</script>
+</body>
+</html>
