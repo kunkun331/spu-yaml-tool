@@ -2,209 +2,310 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<title>SPU YAML 生成器</title>
+<title>SPU / Tag YAML 生成器</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; color: #222; }
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 30px auto; padding: 0 16px; background: #f5f5f5; color: #222; }
   h2 { margin-bottom: 2px; }
-  .sub { color: #888; font-size: 13px; margin: 0 0 20px; }
-  label { display: block; font-weight: 600; margin: 16px 0 5px; font-size: 14px; }
+  .sub { color: #888; font-size: 13px; margin: 0 0 16px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #ddd; }
+  .tab { padding: 10px 18px; cursor: pointer; font-size: 14px; font-weight: 600; color: #888; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  .tab.active { color: #4a90e2; border-color: #4a90e2; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  label { display: block; font-weight: 600; margin: 12px 0 5px; font-size: 14px; }
   textarea {
     width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;
-    font-size: 13px; font-family: monospace; background: #fff; height: 180px; resize: vertical;
+    font-size: 13px; font-family: monospace; background: #fff; height: 160px; resize: vertical;
   }
   .btn { padding: 9px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
-  #genBtn { background: #4a90e2; color: #fff; margin-top: 12px; }
-  #copyBtn { background: #eee; color: #333; margin-top: 12px; margin-left: 8px; display: none; }
-  #status { margin-top: 16px; font-size: 13px; }
+  .btn-primary { background: #4a90e2; color: #fff; margin-top: 12px; }
+  .btn-copy { background: #eee; color: #333; margin-top: 12px; margin-left: 8px; display: none; }
+  .status { margin-top: 16px; font-size: 13px; }
   .card {
     background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
-    border-left: 4px solid #4a90e2; display: flex; align-items: flex-start; gap: 12px;
+    border-left: 4px solid #4a90e2;
   }
   .card.ok { border-color: #27ae60; }
   .card.warn { border-color: #e67e22; }
   .card.err { border-color: #e74c3c; }
-  .card-info { flex: 1; font-size: 13px; line-height: 1.7; }
+  .card-info { font-size: 13px; line-height: 1.7; }
   .card-info strong { font-size: 14px; }
-  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600; display: inline-block; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600; display: inline-block; margin-left: 6px; }
   .badge.ok { background: #d4edda; color: #155724; }
   .badge.warn { background: #fff3cd; color: #856404; }
   .badge.err { background: #f8d7da; color: #721c24; }
-  .spu-input { border: 1px solid #ddd; border-radius: 4px; padding: 3px 7px; font-size: 13px; width: 200px; }
-  #output {
+  .id-input { border: 1px solid #ddd; border-radius: 4px; padding: 3px 7px; font-size: 13px; width: 220px; }
+  .output {
     margin-top: 16px; background: #1e1e1e; color: #d4d4d4; padding: 16px;
     border-radius: 8px; font-family: monospace; font-size: 13px; white-space: pre;
-    display: none; line-height: 1.8;
+    display: none; line-height: 1.7;
   }
-  #dbStatus { font-size: 12px; color: #888; margin-bottom: 16px; }
+  .db-status { font-size: 12px; color: #888; margin-bottom: 12px; }
   .match-row { font-size: 12px; color: #555; margin-top: 3px; }
   .match-row span { background: #eef; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
 </style>
 </head>
 <body>
-<h2>🎭 SPU YAML 生成器</h2>
-<p class="sub">批量将机器人播报转为后台 YAML 配置 · 自动匹配 spu_id</p>
-<div id="dbStatus">⏳ 正在加载剧目数据库...</div>
+<h2>🎭 SPU / Tag YAML 生成器</h2>
+<p class="sub">把机器人播报转成后台 YAML · 自动匹配 spu_id / tag_id</p>
+<div class="db-status" id="dbStatus">⏳ 加载数据库...</div>
 
-<label>粘贴播报内容（可粘贴多条，用空行分隔）</label>
-<textarea id="input" placeholder="spu无法匹配通知🈚🈚🈚
+<div class="tabs">
+  <div class="tab active" data-tab="spu">SPU 无法匹配</div>
+  <div class="tab" data-tab="tag">Tag 无法匹配</div>
+</div>
+
+<!-- SPU PANEL -->
+<div class="panel active" id="panel-spu">
+  <label>粘贴播报内容（可粘贴多条，空行分隔）</label>
+  <textarea id="spuInput" placeholder="spu无法匹配通知🈚🈚🈚
 剧名📕：红莲
 城市🌇：成都
 剧场🕍：成都城市音乐厅歌剧厅
-演出时间⏰：2026-07-10 19:30
+演出时间⏰：2026-07-10 19:30"></textarea>
+  <button class="btn btn-primary" onclick="parseSpu()">解析并匹配</button>
+  <button class="btn btn-copy" id="spuCopyBtn" onclick="copyOutput('spu')">复制 YAML</button>
+  <div class="status" id="spuStatus"></div>
+  <div class="output" id="spuOutput"></div>
+</div>
 
-spu无法匹配通知🈚🈚🈚
-剧名📕：另一部剧
-城市🌇：上海
-剧场🕍：某某剧场
-演出时间⏰：2026-07-11 20:00"></textarea>
-
-<button class="btn" id="genBtn" onclick="generate()">解析并匹配</button>
-<button class="btn" id="copyBtn" onclick="copyYaml()">复制 YAML</button>
-
-<div id="status"></div>
-<div id="output"></div>
+<!-- TAG PANEL -->
+<div class="panel" id="panel-tag">
+  <label>粘贴播报内容（每行一条：《剧名》-演员）</label>
+  <textarea id="tagInput" placeholder="tag无法匹配通知❗❗❗
+《我那长乐塬》-张鑫
+《莫比乌斯环》-朱珠
+《开膛手杰克》-李磊"></textarea>
+  <button class="btn btn-primary" onclick="parseTag()">解析并匹配</button>
+  <button class="btn btn-copy" id="tagCopyBtn" onclick="copyOutput('tag')">复制 YAML</button>
+  <div class="status" id="tagStatus"></div>
+  <div class="output" id="tagOutput"></div>
+</div>
 
 <script>
-let showsDb = [];
-let showsMap = {};
+let showsDb = [], artistsDb = [];
+let showsMap = {}, artistsMap = {};
 
 async function loadDb() {
+  const status = document.getElementById('dbStatus');
   try {
-    const resp = await fetch('shows.json');
-    showsDb = await resp.json();
-    showsDb.forEach(s => { showsMap[normalize(s.name)] = s.id; });
-    document.getElementById('dbStatus').textContent = `✅ 数据库已加载 ${showsDb.length} 部剧目`;
+    const [s, a] = await Promise.all([
+      fetch('shows.json').then(r => r.json()),
+      fetch('artists.json').then(r => r.json()),
+    ]);
+    showsDb = s; artistsDb = a;
+    s.forEach(x => showsMap[norm(x.name)] = x.id);
+    a.forEach(x => artistsMap[norm(x.name)] = x.id);
+    status.textContent = `✅ 剧目 ${s.length} · 演员 ${a.length}`;
   } catch(e) {
-    document.getElementById('dbStatus').textContent = '❌ 数据库加载失败';
+    status.textContent = '❌ 数据库加载失败';
   }
 }
 
-function normalize(s) {
-  return s.replace(/\s/g, '').toLowerCase();
-}
+function norm(s) { return (s || '').replace(/\s/g, '').toLowerCase(); }
 
-function findSpu(musical) {
-  const key = normalize(musical);
-  if (showsMap[key]) return { id: showsMap[key], type: 'exact' };
+function fuzzyFind(name, db, map) {
+  const k = norm(name);
+  if (map[k]) return { id: map[k], type: 'exact' };
   let best = null;
-  for (const s of showsDb) {
-    const dbKey = normalize(s.name);
-    if (dbKey.includes(key) || key.includes(dbKey)) {
-      if (!best || s.name.length > best.name.length) best = s;
+  for (const x of db) {
+    const dk = norm(x.name);
+    if (dk.includes(k) || k.includes(dk)) {
+      if (!best || x.name.length > best.name.length) best = x;
     }
   }
-  if (best) return { id: best.id, name: best.name, type: 'fuzzy' };
-  return null;
+  return best ? { id: best.id, name: best.name, type: 'fuzzy' } : null;
 }
 
-function parseLine(line) {
+// ----- Tab switching -----
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+  };
+});
+
+// ----- SPU mode -----
+let spuItems = [];
+
+function parseSpu() {
+  const raw = document.getElementById('spuInput').value.trim();
+  if (!raw) return;
+  const blocks = splitBlocks(raw, 'spu无法匹配');
+  spuItems = blocks.map(b => {
+    let musical=null, city=null, theatre=null;
+    for (const line of b) {
+      if (!musical && (line.includes('剧名') || line.includes('📕'))) musical = afterColon(line);
+      else if (!city && (line.includes('城市') || line.includes('🌇'))) city = afterColon(line);
+      else if (!theatre && (line.includes('剧场') || line.includes('🕍'))) theatre = afterColon(line);
+    }
+    const match = musical ? fuzzyFind(musical, showsDb, showsMap) : null;
+    return { musical, city, theatre, match, manualId: '' };
+  }).filter(it => it.musical || it.city || it.theatre);
+  renderSpu();
+}
+
+function renderSpu() {
+  const status = document.getElementById('spuStatus');
+  status.innerHTML = '';
+  spuItems.forEach((item, i) => {
+    const { musical, city, theatre, match } = item;
+    const valid = musical && city && theatre;
+    let cls='card', badge='', spuDisp='', extra='';
+    if (!valid) {
+      cls += ' err'; badge = '<span class="badge err">解析失败</span>';
+    } else if (match && match.type === 'exact') {
+      cls += ' ok'; badge = '<span class="badge ok">精确匹配</span>';
+      spuDisp = `<span style="color:#27ae60;font-family:monospace">${match.id}</span>`;
+    } else if (match && match.type === 'fuzzy') {
+      cls += ' warn'; badge = '<span class="badge warn">模糊匹配</span>';
+      spuDisp = `<span style="color:#e67e22;font-family:monospace">${match.id}</span>`;
+      extra = `<div class="match-row">匹配到：<span>${match.name}</span>，请确认</div>`;
+    } else {
+      cls += ' err'; badge = '<span class="badge err">未匹配</span>';
+      spuDisp = `<input class="id-input" placeholder="手动填 spu_id" oninput="spuItems[${i}].manualId=this.value;refreshSpuOutput()">`;
+    }
+    status.innerHTML += `
+      <div class="${cls}"><div class="card-info">
+        <strong>${musical || '（未识别）'}</strong>${badge}<br>
+        城市：${city || '-'} ｜ 剧场：${theatre || '-'}<br>
+        SPU ID：${spuDisp}${extra}
+      </div></div>`;
+  });
+  refreshSpuOutput();
+}
+
+function refreshSpuOutput() {
+  const out = document.getElementById('spuOutput'), btn = document.getElementById('spuCopyBtn');
+  const lines = [];
+  for (const it of spuItems) {
+    if (!it.musical || !it.city || !it.theatre) continue;
+    const id = (it.match ? it.match.id : null) || it.manualId || 'FILL_IN_SPU_ID';
+    lines.push(`- city: "${it.city}"\n  musical: "${it.musical}"\n  theatre: "${it.theatre}"\n  spu_id: ${id}`);
+  }
+  if (!lines.length) { out.style.display='none'; btn.style.display='none'; return; }
+  const txt = lines.join('\n\n');
+  out._raw = txt; out.textContent = txt;
+  out.style.display = 'block'; btn.style.display = 'inline-block';
+}
+
+// ----- TAG mode -----
+let tagItems = [];
+
+function parseTag() {
+  const raw = document.getElementById('tagInput').value.trim();
+  if (!raw) return;
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  // 按剧名聚合：同一个剧名下多个演员合并到一组
+  const groups = {};
+  const order = [];
+  for (const line of lines) {
+    if (line.includes('tag无法匹配')) continue;
+    const m = line.match(/[《【]([^》】]+)[》】]\s*[-—–]\s*(.+)$/);
+    if (!m) continue;
+    const musical = m[1].trim(), artist = m[2].trim();
+    if (!groups[musical]) { groups[musical] = []; order.push(musical); }
+    groups[musical].push(artist);
+  }
+  tagItems = order.map(musical => {
+    const spu = fuzzyFind(musical, showsDb, showsMap);
+    const artists = groups[musical].map(name => ({
+      name, match: fuzzyFind(name, artistsDb, artistsMap), manualId: ''
+    }));
+    return { musical, spu, manualSpu: '', artists };
+  });
+  renderTag();
+}
+
+function renderTag() {
+  const status = document.getElementById('tagStatus');
+  status.innerHTML = '';
+  tagItems.forEach((item, i) => {
+    const { musical, spu, artists } = item;
+    let cls = 'card';
+    let spuBadge = '', spuDisp = '';
+    if (spu && spu.type === 'exact') {
+      cls += ' ok';
+      spuBadge = '<span class="badge ok">SPU 精确</span>';
+      spuDisp = `<span style="color:#27ae60;font-family:monospace">${spu.id}</span>`;
+    } else if (spu && spu.type === 'fuzzy') {
+      cls += ' warn';
+      spuBadge = `<span class="badge warn">SPU 模糊→${spu.name}</span>`;
+      spuDisp = `<span style="color:#e67e22;font-family:monospace">${spu.id}</span>`;
+    } else {
+      cls += ' err';
+      spuBadge = '<span class="badge err">SPU 未匹配</span>';
+      spuDisp = `<input class="id-input" placeholder="手动填 spu_id" oninput="tagItems[${i}].manualSpu=this.value;refreshTagOutput()">`;
+    }
+    let artHtml = '';
+    artists.forEach((a, j) => {
+      let aDisp;
+      if (a.match && a.match.type === 'exact') {
+        aDisp = `<span style="color:#27ae60;font-family:monospace">${a.match.id}</span> <span class="badge ok">精确</span>`;
+      } else if (a.match && a.match.type === 'fuzzy') {
+        aDisp = `<span style="color:#e67e22;font-family:monospace">${a.match.id}</span> <span class="badge warn">模糊→${a.match.name}</span>`;
+      } else {
+        aDisp = `<input class="id-input" placeholder="手动填 tag_id" oninput="tagItems[${i}].artists[${j}].manualId=this.value;refreshTagOutput()"> <span class="badge err">未匹配</span>`;
+      }
+      artHtml += `<div style="margin-top:4px">　└ ${a.name}：${aDisp}</div>`;
+    });
+    status.innerHTML += `
+      <div class="${cls}"><div class="card-info">
+        <strong>《${musical}》</strong>${spuBadge}<br>
+        SPU ID：${spuDisp}
+        ${artHtml}
+      </div></div>`;
+  });
+  refreshTagOutput();
+}
+
+function refreshTagOutput() {
+  const out = document.getElementById('tagOutput'), btn = document.getElementById('tagCopyBtn');
+  const lines = [];
+  for (const it of tagItems) {
+    const sid = (it.spu ? it.spu.id : null) || it.manualSpu || 'FILL_IN_SPU_ID';
+    let block = `- spu_id: ${sid}\n  artists:`;
+    for (const a of it.artists) {
+      const aid = (a.match ? a.match.id : null) || a.manualId || 'FILL_IN_TAG_ID';
+      block += `\n    - name: "${a.name}"\n      id: ${aid}`;
+    }
+    lines.push(block);
+  }
+  if (!lines.length) { out.style.display='none'; btn.style.display='none'; return; }
+  const txt = lines.join('\n');
+  out._raw = txt; out.textContent = txt;
+  out.style.display = 'block'; btn.style.display = 'inline-block';
+}
+
+// ----- Helpers -----
+function afterColon(line) {
   const m = line.match(/^.+?[：:](.+)$/);
   return m ? m[1].trim() : null;
 }
 
-function parseBlocks(raw) {
+function splitBlocks(raw, headerKey) {
   const lines = raw.split('\n');
-  const blocks = [];
-  let cur = [];
+  const blocks = []; let cur = [];
   for (const line of lines) {
     const t = line.trim();
-    if (!t) {
-      if (cur.length) { blocks.push(cur); cur = []; }
-    } else if (t.includes('spu无法匹配') && cur.length) {
-      blocks.push(cur); cur = [t];
-    } else {
-      cur.push(t);
-    }
+    if (!t) { if (cur.length) { blocks.push(cur); cur = []; } }
+    else if (t.includes(headerKey) && cur.length) { blocks.push(cur); cur = [t]; }
+    else cur.push(t);
   }
   if (cur.length) blocks.push(cur);
   return blocks;
 }
 
-function parseBlock(lines) {
-  let musical = null, city = null, theatre = null;
-  for (const line of lines) {
-    if (!musical && (line.includes('剧名') || line.includes('📕'))) musical = parseLine(line);
-    else if (!city && (line.includes('城市') || line.includes('🌇'))) city = parseLine(line);
-    else if (!theatre && (line.includes('剧场') || line.includes('🕍'))) theatre = parseLine(line);
-  }
-  return { musical, city, theatre };
-}
-
-let parsedItems = [];
-
-function generate() {
-  const raw = document.getElementById('input').value.trim();
-  if (!raw) return;
-  const blocks = parseBlocks(raw);
-  parsedItems = blocks.map(b => {
-    const { musical, city, theatre } = parseBlock(b);
-    const match = musical ? findSpu(musical) : null;
-    return { musical, city, theatre, match, manualSpu: '' };
-  }).filter(it => it.musical || it.city || it.theatre);
-  renderCards();
-}
-
-function renderCards() {
-  const status = document.getElementById('status');
-  status.innerHTML = '';
-  parsedItems.forEach((item, i) => {
-    const { musical, city, theatre, match } = item;
-    const valid = musical && city && theatre;
-    let cardClass = 'card', badge = '', matchRow = '', spuDisplay = '';
-    if (!valid) {
-      cardClass += ' err';
-      badge = '<span class="badge err">解析失败</span>';
-    } else if (match && match.type === 'exact') {
-      cardClass += ' ok';
-      badge = '<span class="badge ok">精确匹配</span>';
-      spuDisplay = `<span style="color:#27ae60;font-family:monospace">${match.id}</span>`;
-    } else if (match && match.type === 'fuzzy') {
-      cardClass += ' warn';
-      badge = '<span class="badge warn">模糊匹配</span>';
-      spuDisplay = `<span style="color:#e67e22;font-family:monospace">${match.id}</span>`;
-      matchRow = `<div class="match-row">匹配到：<span>${match.name}</span>，请确认是否正确</div>`;
-    } else {
-      cardClass += ' err';
-      badge = '<span class="badge err">未匹配</span>';
-      spuDisplay = `<input class="spu-input" placeholder="手动填入 spu_id" oninput="parsedItems[${i}].manualSpu=this.value; refreshOutput()">`;
-    }
-    status.innerHTML += `
-      <div class="${cardClass}">
-        <div class="card-info">
-          <strong>${musical || '（未识别）'}</strong> ${badge}<br>
-          城市：${city || '-'} ｜ 剧场：${theatre || '-'}<br>
-          SPU ID：${spuDisplay}
-          ${matchRow}
-        </div>
-      </div>`;
-  });
-  refreshOutput();
-}
-
-function refreshOutput() {
-  const out = document.getElementById('output');
-  const copyBtn = document.getElementById('copyBtn');
-  const lines = [];
-  for (const item of parsedItems) {
-    const { musical, city, theatre, match, manualSpu } = item;
-    if (!musical || !city || !theatre) continue;
-    const spuId = (match ? match.id : null) || manualSpu || 'FILL_IN_SPU_ID';
-    lines.push(`- city: "${city}"\n  musical: "${musical}"\n  theatre: "${theatre}"\n  spu_id: ${spuId}`);
-  }
-  if (!lines.length) { out.style.display = 'none'; copyBtn.style.display = 'none'; return; }
-  const raw = lines.join('\n\n');
-  out._raw = raw;
-  out.textContent = raw;
-  out.style.display = 'block';
-  copyBtn.style.display = 'inline-block';
-}
-
-function copyYaml() {
-  navigator.clipboard.writeText(document.getElementById('output')._raw).then(() => {
-    const btn = document.getElementById('copyBtn');
+function copyOutput(mode) {
+  const out = document.getElementById(mode + 'Output');
+  navigator.clipboard.writeText(out._raw).then(() => {
+    const btn = document.getElementById(mode + 'CopyBtn');
+    const old = btn.textContent;
     btn.textContent = '✓ 已复制';
-    setTimeout(() => btn.textContent = '复制 YAML', 1500);
+    setTimeout(() => btn.textContent = old, 1500);
   });
 }
 
